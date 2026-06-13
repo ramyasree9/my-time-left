@@ -6,9 +6,14 @@ import { ThemeProvider } from "@/components/theme-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: "My Time Left - Visualize Your Life Timeline",
-  description: "Visualize your life's journey - the days you've lived and the precious time that remains.",
-    generator: 'v0.app'
+  title: "My Time Left — See Your Life in Time",
+  description:
+    "Your life is a finite number of days. See how many you've spent and how many likely remain — in years, months, weeks, and days.",
+  openGraph: {
+    title: "My Time Left",
+    description: "See your life as a finite number of days. Make every one count.",
+    type: "website",
+  },
 }
 
 export default function RootLayout({

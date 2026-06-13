@@ -58,13 +58,3 @@
   }
 }
 
-/* Custom grid for weeks visualization */
-.grid-cols-52 {
-  grid-template-columns: repeat(52, minmax(0, 1fr));
-}
-
-/* Custom grid for days visualization */
-.grid-cols-40 {
-  grid-template-columns: repeat(40, minmax(0, 1fr));
-}
-

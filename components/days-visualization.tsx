@@ -1,62 +1,140 @@
 "use client"
 
-import { motion } from "framer-motion"
+import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
+import type { LifeData, Milestone } from "@/lib/types"
+import { Legend, RAW, VizHeading } from "@/components/viz-shared"
 
 interface DaysVisualizationProps {
-  data: {
-    totalDays: number
-    daysLived: number
-  }
+  data: LifeData
+  milestones: Milestone[]
 }
 
-export function DaysVisualization({ data }: DaysVisualizationProps) {
-  const { totalDays, daysLived } = data
+const COLS = 365
+const PITCH = 4.5
+const CELL = 3.4
+const DAYS_IN_YEAR = 365.25
 
-  // For performance reasons, we'll show a percentage representation
-  const sampleSize = 2000
-  const sampleDays = Array.from({ length: sampleSize }, (_, i) => i + 1)
+export function DaysVisualization({ data, milestones }: DaysVisualizationProps) {
+  const { totalDays, daysLived, birthDate } = data
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null)
 
-  // Calculate how many sample days should be filled based on percentage lived
-  const percentageLived = (daysLived / totalDays) * 100
-  const filledSampleDays = Math.round((percentageLived / 100) * sampleSize)
+  // Simple contiguous layout: 365 days per row, filled left-to-right. This
+  // avoids the gaps a fractional 365.25 mapping introduces at the row edges.
+  const rows = Math.ceil(totalDays / COLS)
+  const logicalW = COLS * PITCH
+  const logicalH = rows * PITCH
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    // Non-null const so the nested draw helper keeps the type.
+    const g: CanvasRenderingContext2D = ctx
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    canvas.width = logicalW * dpr
+    canvas.height = logicalH * dpr
+    g.scale(dpr, dpr)
+
+    const reduced =
+      window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+    const drawUpTo = (limit: number) => {
+      g.clearRect(0, 0, logicalW, logicalH)
+      for (let d = 0; d < limit; d++) {
+        const x = (d % COLS) * PITCH
+        const y = Math.floor(d / COLS) * PITCH
+        g.fillStyle = d < daysLived ? RAW.lived : d === daysLived ? RAW.current : RAW.future
+        g.fillRect(x, y, CELL, CELL)
+      }
+      // milestone lines (a milestone age maps to its day index / COLS rows)
+      for (const m of milestones) {
+        const ly = ((m.age * DAYS_IN_YEAR) / COLS) * PITCH
+        g.strokeStyle = m.color
+        g.globalAlpha = 0.8
+        g.lineWidth = 1
+        g.beginPath()
+        g.moveTo(0, ly)
+        g.lineTo(logicalW, ly)
+        g.stroke()
+        g.globalAlpha = 1
+      }
+    }
+
+    if (reduced) {
+      drawUpTo(totalDays)
+      return
+    }
+
+    let raf = 0
+    let drawn = 0
+    const step = Math.max(200, Math.ceil(totalDays / 60)) // ~1s reveal
+    const loop = () => {
+      drawn = Math.min(totalDays, drawn + step)
+      drawUpTo(drawn)
+      if (drawn < totalDays) raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [logicalW, logicalH, totalDays, daysLived, milestones])
+
+  const handleMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = logicalW / rect.width
+    const scaleY = logicalH / rect.height
+    const mx = (e.clientX - rect.left) * scaleX
+    const my = (e.clientY - rect.top) * scaleY
+    const col = Math.floor(mx / PITCH)
+    const row = Math.floor(my / PITCH)
+    const d = row * COLS + col
+    if (d < 0 || d >= totalDays || col >= COLS) {
+      setTip(null)
+      return
+    }
+    const date = new Date(birthDate.getTime() + d * 86400000)
+    const label = date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+    const age = Math.floor(d / DAYS_IN_YEAR)
+    setTip({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      text: `${label} · day ${d.toLocaleString()} · age ${age}`,
+    })
+  }
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-xl font-semibold text-white">Your Life in Days</h3>
-        <p className="text-slate-400">Each square represents one day of your life</p>
-      </div>
+      <VizHeading
+        title="Your life in days"
+        subtitle={`Each dot is a single day — all ${totalDays.toLocaleString()} of them. Hover for the date.`}
+      />
 
-      <Card className="bg-white/5 backdrop-blur-sm border-slate-700 p-6 overflow-auto">
-        <div className="grid grid-cols-40 sm:grid-cols-50 gap-[1px] min-w-[600px]">
-          {sampleDays.map((day) => (
-            <motion.div
-              key={day}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{
-                duration: 0.05,
-                delay: Math.min(day * 0.0001, 0.2),
-              }}
-              className={`aspect-square rounded-[1px] w-2
-                ${day <= filledSampleDays ? "bg-emerald-600/80" : "bg-indigo-500/30"}`}
-            />
-          ))}
+      <Card className="border-slate-800 bg-white/[0.03] p-6">
+        <p className="mb-3 text-center text-xs text-slate-500 lg:hidden">Scroll sideways to explore →</p>
+        <div className="relative overflow-x-auto">
+          <canvas
+            ref={canvasRef}
+            onMouseMove={handleMove}
+            onMouseLeave={() => setTip(null)}
+            style={{ width: logicalW, height: logicalH }}
+            className="block"
+          />
+          {tip && (
+            <div
+              className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded bg-black/90 px-2 py-1 text-[11px] text-white shadow-lg"
+              style={{ left: tip.x, top: tip.y - 6 }}
+            >
+              {tip.text}
+            </div>
+          )}
         </div>
       </Card>
 
-      <div className="flex justify-center space-x-6 text-sm">
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-emerald-600/80 rounded-sm mr-2"></div>
-          <span className="text-slate-300">Days lived</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-indigo-500/30 rounded-sm mr-2"></div>
-          <span className="text-slate-300">Future days</span>
-        </div>
-      </div>
+      <Legend unit="days" singular="day" milestones={milestones} />
     </div>
   )
 }
-

@@ -1,113 +1,105 @@
 "use client"
 
-import { motion } from "framer-motion"
 import { Card } from "@/components/ui/card"
+import type { LifeData, Milestone } from "@/lib/types"
+import { CELL, Legend, MilestoneBand, VizHeading } from "@/components/viz-shared"
 
 interface WeeksVisualizationProps {
-  data: {
-    lifeExpectancy: number
-    daysLived: number
-    birthDate: Date
-  }
+  data: LifeData
+  milestones: Milestone[]
 }
 
-export function WeeksVisualization({ data }: WeeksVisualizationProps) {
-  const { lifeExpectancy, birthDate } = data
-  const totalWeeks = lifeExpectancy * 52
-  const weeksLived = Math.floor(data.daysLived / 7)
+const CELL_PX = 11
+const GAP_PX = 3
+const PITCH = CELL_PX + GAP_PX
+const HEADER_H = 16
+const QUARTERS = [0, 13, 26, 39]
 
-  // Create array of all weeks
-  const weeks = Array.from({ length: totalWeeks }, (_, i) => i + 1)
-
-  // Create array of years for y-axis labels
+export function WeeksVisualization({ data, milestones }: WeeksVisualizationProps) {
+  const { lifeExpectancy, totalWeeks, weeksLived, birthDate } = data
   const birthYear = birthDate.getFullYear()
-  const years = Array.from({ length: Math.ceil(lifeExpectancy / 5) }, (_, i) => birthYear + i * 5)
+  const rows = lifeExpectancy
 
-  // Create array of week numbers for x-axis labels (every 13 weeks = quarterly)
-  const weekLabels = [1, 13, 26, 39, 52]
+  const weeks = Array.from({ length: totalWeeks }, (_, i) => i)
+  const yearLabels = Array.from({ length: Math.floor(lifeExpectancy / 5) + 1 }, (_, i) => i * 5).filter(
+    (y) => y <= lifeExpectancy,
+  )
+
+  const gridHeight = rows * CELL_PX + (rows - 1) * GAP_PX
+  const gridWidth = 52 * CELL_PX + 51 * GAP_PX
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-xl font-semibold text-white">Your Life in Weeks</h3>
-        <p className="text-slate-400">Each square represents one week of your life</p>
-      </div>
+      <VizHeading
+        title="Your life in weeks"
+        subtitle="Each row is one year (52 weeks). The whole grid is your entire life."
+      />
 
-      <Card className="bg-white/5 backdrop-blur-sm border-slate-700 p-6 overflow-auto">
-        <div className="flex">
-          {/* Y-axis labels (years) */}
-          <div className="pr-2 flex flex-col justify-between text-xs text-slate-400">
-            {years.map((year, index) => (
-              <div
-                key={year}
-                style={{
-                  height: index === years.length - 1 ? "20px" : `${(5 * 52 * 3) / (years.length - 1)}px`,
-                }}
-              >
-                {year}
-              </div>
-            ))}
-          </div>
-
-          <div>
-            {/* X-axis labels (weeks) */}
-            <div className="flex mb-1 pl-3">
-              {weekLabels.map((week) => (
-                <div
-                  key={week}
-                  className="text-xs text-slate-400"
-                  style={{
-                    width: `${(52 * 3) / weekLabels.length}px`,
-                    marginLeft:
-                      week === 1 ? 0 : `${(52 * 3 * (week - weekLabels[weekLabels.indexOf(week) - 1])) / 52 - 20}px`,
-                  }}
+      <Card className="border-slate-800 bg-white/[0.03] p-6">
+        <div className="overflow-x-auto">
+          <div className="mx-auto flex w-fit justify-center">
+            {/* Year axis (left). Extra height keeps the last year label from
+                overflowing the scroll container (overflow-x-auto coerces
+                overflow-y to auto, which would otherwise add a stray bar). */}
+            <div className="relative mr-3 w-10 shrink-0" style={{ height: gridHeight + HEADER_H + 20 }}>
+              {yearLabels.map((y) => (
+                <span
+                  key={y}
+                  className="absolute right-0 text-[10px] tabular-nums text-slate-500"
+                  style={{ top: HEADER_H + y * PITCH - 5 }}
                 >
-                  W{week}
-                </div>
+                  {birthYear + y}
+                </span>
               ))}
             </div>
 
-            {/* Weeks grid */}
-            <div className="grid grid-cols-52 gap-[2px] min-w-[800px]">
-              {weeks.map((week) => (
-                <motion.div
-                  key={week}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{
-                    duration: 0.1,
-                    delay: Math.min(week * 0.0001, 0.3),
-                  }}
-                  className={`aspect-square rounded-[1px] w-3
-                    ${
-                      week <= weeksLived
-                        ? "bg-emerald-600/80"
-                        : week === weeksLived + 1
-                          ? "bg-emerald-600/40"
-                          : "bg-indigo-500/30"
-                    }`}
-                />
-              ))}
+            <div>
+              {/* Quarter markers, aligned to columns */}
+              <div className="relative" style={{ width: gridWidth, height: HEADER_H }}>
+                {QUARTERS.map((q) => (
+                  <span
+                    key={q}
+                    className="absolute text-[9px] text-slate-600"
+                    style={{ left: q * PITCH }}
+                  >
+                    W{q + 1}
+                  </span>
+                ))}
+              </div>
+
+              {/* Weeks grid + milestone bands */}
+              <div className="relative">
+                <div
+                  className="grid"
+                  style={{ gridTemplateColumns: `repeat(52, ${CELL_PX}px)`, gap: GAP_PX }}
+                >
+                  {weeks.map((w) => {
+                    const isLived = w < weeksLived
+                    const isCurrent = w === weeksLived
+                    const yearOfLife = Math.floor(w / 52)
+                    const weekInYear = (w % 52) + 1
+                    return (
+                      <div
+                        key={w}
+                        title={`Age ${yearOfLife} · week ${weekInYear} (${birthYear + yearOfLife})`}
+                        className={`aspect-square rounded-[2px]
+                          ${isLived ? CELL.lived : isCurrent ? CELL.current : CELL.future}
+                          ${isCurrent ? "ring-1 ring-amber-300" : ""}`}
+                      />
+                    )
+                  })}
+                </div>
+
+                {milestones.map((m) => (
+                  <MilestoneBand key={m.id} m={m} topPx={m.age * PITCH} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </Card>
 
-      <div className="flex justify-center space-x-6 text-sm">
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-emerald-600/80 rounded-sm mr-2"></div>
-          <span className="text-slate-300">Weeks lived</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-emerald-600/40 rounded-sm mr-2"></div>
-          <span className="text-slate-300">Current week</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-indigo-500/30 rounded-sm mr-2"></div>
-          <span className="text-slate-300">Future weeks</span>
-        </div>
-      </div>
+      <Legend unit="weeks" singular="week" milestones={milestones} />
     </div>
   )
 }
-
