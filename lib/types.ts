@@ -43,6 +43,8 @@ export interface Milestone {
   age: number
   /** Tailwind-friendly hex color used for the band/marker. */
   color: string
+  /** Icon key resolved by <MilestoneIcon /> (e.g. "graduation"). */
+  icon: string
   enabled: boolean
 }
 

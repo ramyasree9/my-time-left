@@ -6,10 +6,10 @@ import type { Milestone } from "./types"
  * life phase, drawn as a band/marker on the timelines.
  */
 export const DEFAULT_MILESTONES: Milestone[] = [
-  { id: "school", label: "School", age: 5, color: "#38bdf8", enabled: true },
-  { id: "college", label: "College", age: 18, color: "#a78bfa", enabled: true },
-  { id: "career", label: "Career", age: 22, color: "#f59e0b", enabled: true },
-  { id: "retirement", label: "Retirement", age: 65, color: "#fb7185", enabled: true },
+  { id: "school", label: "School", age: 5, color: "#38bdf8", icon: "school", enabled: true },
+  { id: "college", label: "College", age: 18, color: "#a78bfa", icon: "graduation", enabled: true },
+  { id: "career", label: "Career", age: 22, color: "#f59e0b", icon: "briefcase", enabled: true },
+  { id: "retirement", label: "Retirement", age: 65, color: "#fb7185", icon: "armchair", enabled: true },
 ]
 
 export type Granularity = "years" | "months" | "weeks" | "days"

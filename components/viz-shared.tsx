@@ -1,6 +1,7 @@
 "use client"
 
 import type { Milestone } from "@/lib/types"
+import { MilestoneIcon } from "@/components/milestone-icon"
 
 // Shared palette for every grid view. Lived = emerald, current = gold
 // (ties to the sand), future = faint.
@@ -53,7 +54,7 @@ export function Legend({
         <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-slate-400">
           {milestones.map((m) => (
             <span key={m.id} className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
+              <MilestoneIcon icon={m.icon} className="h-3.5 w-3.5" style={{ color: m.color }} />
               {m.label} · age {m.age}
             </span>
           ))}
@@ -85,9 +86,10 @@ export function MilestoneBand({ m, topPx }: { m: Milestone; topPx: number }) {
     >
       <div className="h-px w-full" style={{ background: m.color, opacity: 0.7 }} />
       <span
-        className="absolute -top-2 left-1 rounded px-1 text-[9px] font-medium leading-tight"
+        className="absolute -top-2.5 left-0 flex items-center gap-1 rounded px-1 py-0.5 text-[9px] font-medium leading-none"
         style={{ background: m.color, color: "#0b0f17" }}
       >
+        <MilestoneIcon icon={m.icon} className="h-2.5 w-2.5" />
         {m.label}
       </span>
     </div>

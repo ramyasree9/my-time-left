@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import type { LifeData, Milestone } from "@/lib/types"
 import { Legend, RAW, VizHeading } from "@/components/viz-shared"
+import { MilestoneIcon } from "@/components/milestone-icon"
 
 interface DaysVisualizationProps {
   data: LifeData
@@ -123,6 +124,20 @@ export function DaysVisualization({ data, milestones }: DaysVisualizationProps) 
             style={{ width: logicalW, height: logicalH }}
             className="block"
           />
+          {milestones.map((m) => (
+            <span
+              key={m.id}
+              className="pointer-events-none absolute left-0 z-10 flex items-center gap-1 rounded px-1 py-0.5 text-[9px] font-medium leading-none"
+              style={{
+                top: (m.age * DAYS_IN_YEAR / COLS) * PITCH - 7,
+                background: m.color,
+                color: "#0b0f17",
+              }}
+            >
+              <MilestoneIcon icon={m.icon} className="h-2.5 w-2.5" />
+              {m.label}
+            </span>
+          ))}
           {tip && (
             <div
               className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded bg-black/90 px-2 py-1 text-[11px] text-white shadow-lg"

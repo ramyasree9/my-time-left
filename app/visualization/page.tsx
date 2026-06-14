@@ -1,27 +1,33 @@
 "use client"
 
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { motion } from "framer-motion"
-import { Check, Home, Share2 } from "lucide-react"
+import { Check, Flag, Home, Pencil, Share2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { VisualizationNav } from "@/components/visualization-nav"
 import { YearsVisualization } from "@/components/years-visualization"
 import { MonthsVisualization } from "@/components/months-visualization"
 import { WeeksVisualization } from "@/components/weeks-visualization"
 import { DaysVisualization } from "@/components/days-visualization"
-import { LifeStats } from "@/components/life-stats"
-import { SandTimer } from "@/components/sand-timer"
-import { LiveCountdown } from "@/components/live-countdown"
-import { CurrentYearDetail } from "@/components/current-year-detail"
-import { FreeTimeBreakdown } from "@/components/free-time-breakdown"
+import { LifeRail } from "@/components/life-rail"
+import { YearFocus } from "@/components/year-focus"
+import { SettingsDialog } from "@/components/settings-dialog"
 import { MilestonesEditor } from "@/components/milestones-editor"
+import { FreeTimeBreakdown } from "@/components/free-time-breakdown"
 
 import { calculateLifeData } from "@/lib/calculate-life-data"
 import { DEFAULT_MILESTONES, visibleMilestones } from "@/lib/milestones"
-import type { Milestone } from "@/lib/types"
+import { DEFAULT_ACTIVITY } from "@/lib/activity"
+import type { ActivityHours, Milestone } from "@/lib/types"
 
 type VisualizationType = "years" | "months" | "weeks" | "days"
 
@@ -41,41 +47,55 @@ function Spinner() {
 
 function VisualizationContent() {
   const searchParams = useSearchParams()
-  const [visualizationType, setVisualizationType] = useState<VisualizationType>("years")
-  const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES)
-  const [showCurrentYear, setShowCurrentYear] = useState(false)
-  const [copied, setCopied] = useState(false)
-  // The whole experience is time-dependent (countdown, % lived). Render only
-  // after mount so the server HTML never disagrees with the client clock.
+  const router = useRouter()
+
   const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  const [dob, setDob] = useState<Date | null>(null)
+  const [expectancy, setExpectancy] = useState<number | null>(null)
+  const [initError, setInitError] = useState<string | null>(null)
 
-  const dobParam = searchParams.get("dob")
-  const expectancyParam = searchParams.get("expectancy")
+  const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES)
+  const [activity, setActivity] = useState<ActivityHours>(DEFAULT_ACTIVITY)
+  const [view, setView] = useState<VisualizationType>("years")
+  const [selectedAge, setSelectedAge] = useState<number | null>(null)
 
-  const parsed = useMemo(() => {
-    if (!dobParam || !expectancyParam) return { error: "Missing required parameters" as const }
-    const dob = new Date(dobParam)
-    const expectancy = Number.parseInt(expectancyParam, 10)
-    if (isNaN(dob.getTime())) return { error: "Invalid date of birth" as const }
-    if (isNaN(expectancy) || expectancy < 50 || expectancy > 120)
-      return { error: "Invalid life expectancy" as const }
-    return { data: calculateLifeData(dob, expectancy) }
-  }, [dobParam, expectancyParam, mounted])
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [milestonesOpen, setMilestonesOpen] = useState(false)
+  const [freeTimeOpen, setFreeTimeOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  // Parse inputs from the URL after mount (keeps SSR/client clocks from disagreeing).
+  useEffect(() => {
+    setMounted(true)
+    const dobParam = searchParams.get("dob")
+    const expParam = searchParams.get("expectancy")
+    if (!dobParam || !expParam) return setInitError("Missing required parameters")
+    const d = new Date(dobParam)
+    const e = Number.parseInt(expParam, 10)
+    if (isNaN(d.getTime())) return setInitError("Invalid date of birth")
+    if (isNaN(e) || e < 50 || e > 120) return setInitError("Invalid life expectancy")
+    setInitError(null)
+    setDob(d)
+    setExpectancy(e)
+  }, [searchParams])
+
+  const data = useMemo(
+    () => (dob && expectancy ? calculateLifeData(dob, expectancy) : null),
+    [dob, expectancy],
+  )
 
   if (!mounted) return <Spinner />
 
-  if ("error" in parsed) {
+  if (initError) {
     return (
       <Shell>
         <div className="flex min-h-screen flex-col items-center justify-center p-4">
           <div className="w-full max-w-md rounded-lg border border-slate-700 bg-white/5 p-6 text-center backdrop-blur-lg">
             <h2 className="mb-4 text-xl font-semibold text-white">Something&apos;s missing</h2>
-            <p className="mb-6 text-slate-300">{parsed.error}</p>
+            <p className="mb-6 text-slate-300">{initError}</p>
             <Link href="/">
               <Button>
-                <Home className="mr-2 h-4 w-4" />
-                Start over
+                <Home className="mr-2 h-4 w-4" /> Start over
               </Button>
             </Link>
           </div>
@@ -84,9 +104,21 @@ function VisualizationContent() {
     )
   }
 
-  const data = parsed.data
+  if (!data || !dob || expectancy === null) return <Spinner />
+
   const visible = visibleMilestones(milestones, data.lifeExpectancy)
-  const endDate = new Date(data.birthDate.getTime() + data.lifeExpectancy * 365.25 * 86400000)
+  const endDate = new Date(dob.getTime() + expectancy * 365.25 * 86400000)
+  const focusAge = selectedAge ?? Math.min(data.lifeExpectancy - 1, Math.floor(data.ageInYears))
+
+  const applySettings = (newDob: Date, newExp: number) => {
+    setDob(newDob)
+    setExpectancy(newExp)
+    setSelectedAge(null)
+    const params = new URLSearchParams()
+    params.set("dob", newDob.toISOString())
+    params.set("expectancy", String(newExp))
+    router.replace(`/visualization?${params.toString()}`)
+  }
 
   const handleShare = async () => {
     const url = window.location.href
@@ -97,7 +129,7 @@ function VisualizationContent() {
           return true
         }
       } catch {
-        /* fall through to execCommand */
+        /* fall through */
       }
       try {
         const ta = document.createElement("textarea")
@@ -121,85 +153,84 @@ function VisualizationContent() {
 
   return (
     <Shell>
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-[#070a12]/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-[#070a12]/85 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <Link href="/" className="text-lg font-bold tracking-tight text-white">
             My Time Left
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Pencil className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Edit</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setMilestonesOpen(true)}>
+              <Flag className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Milestones</span>
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleShare}>
-              {copied ? <Check className="mr-2 h-4 w-4 text-emerald-400" /> : <Share2 className="mr-2 h-4 w-4" />}
-              {copied ? "Copied" : "Share"}
+              {copied ? <Check className="h-4 w-4 text-emerald-400 sm:mr-2" /> : <Share2 className="h-4 w-4 sm:mr-2" />}
+              <span className="hidden sm:inline">{copied ? "Copied" : "Share"}</span>
             </Button>
             <Link href="/">
               <Button variant="ghost" size="sm">
-                <Home className="mr-2 h-4 w-4" />
-                New
+                <Home className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">New</span>
               </Button>
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-10 px-4 py-8">
-        {/* Hero */}
-        <motion.section
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="flex flex-col items-center gap-8 rounded-2xl border border-slate-800 bg-white/[0.03] p-8 sm:flex-row sm:justify-between"
-        >
-          <div className="order-2 text-center sm:order-1 sm:text-left">
-            <p className="text-sm uppercase tracking-[0.3em] text-amber-300/70">Time remaining</p>
-            <div className="mt-3 flex justify-center sm:justify-start">
-              {data.exceeded ? (
-                <p className="text-3xl font-bold text-amber-300">
-                  You&apos;ve already outlived your estimate. Every day now is a bonus.
-                </p>
-              ) : (
-                <LiveCountdown endDate={endDate} />
-              )}
-            </div>
-            <p className="mt-5 max-w-md text-slate-400">
-              <span className="font-semibold text-white">{data.percentageLived.toFixed(1)}%</span> of your
-              expected life is behind you. The sand keeps falling.
-            </p>
-          </div>
-          <div className="order-1 shrink-0 sm:order-2">
-            <SandTimer percentageLived={data.percentageLived} size={200} />
-          </div>
-        </motion.section>
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)_290px]">
+          <LifeRail data={data} endDate={endDate} activity={activity} onOpenFreeTime={() => setFreeTimeOpen(true)} />
 
-        <LifeStats data={data} activeVisualization={visualizationType} />
+          <main className="min-w-0 space-y-6">
+            <VisualizationNav activeType={view} onChange={setView} />
+            {view === "years" && (
+              <YearsVisualization data={data} milestones={visible} selectedYear={selectedAge} onSelectYear={setSelectedAge} />
+            )}
+            {view === "months" && <MonthsVisualization data={data} milestones={visible} />}
+            {view === "weeks" && <WeeksVisualization data={data} milestones={visible} />}
+            {view === "days" && <DaysVisualization data={data} milestones={visible} />}
+          </main>
 
-        <VisualizationNav activeType={visualizationType} onChange={setVisualizationType} />
-
-        <div>
-          {visualizationType === "years" && (
-            <YearsVisualization
-              data={data}
-              milestones={visible}
-              onCurrentYearClick={() => setShowCurrentYear((v) => !v)}
-            />
-          )}
-          {visualizationType === "months" && <MonthsVisualization data={data} milestones={visible} />}
-          {visualizationType === "weeks" && <WeeksVisualization data={data} milestones={visible} />}
-          {visualizationType === "days" && <DaysVisualization data={data} milestones={visible} />}
+          <YearFocus data={data} age={focusAge} milestones={visible} />
         </div>
+      </div>
 
-        {showCurrentYear && (
-          <CurrentYearDetail data={data} onClose={() => setShowCurrentYear(false)} />
-        )}
+      {/* Modals (progressive disclosure) */}
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        initialDob={dob}
+        initialExpectancy={expectancy}
+        onApply={applySettings}
+      />
 
-        <FreeTimeBreakdown data={data} />
+      <Dialog open={milestonesOpen} onOpenChange={setMilestonesOpen}>
+        <DialogContent className="border-slate-800 bg-[#0b0f17] text-white sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Your milestones</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Adjust the ages — they appear as icons across every timeline.
+            </DialogDescription>
+          </DialogHeader>
+          <MilestonesEditor milestones={milestones} lifeExpectancy={data.lifeExpectancy} onChange={setMilestones} />
+        </DialogContent>
+      </Dialog>
 
-        <MilestonesEditor
-          milestones={milestones}
-          lifeExpectancy={data.lifeExpectancy}
-          onChange={setMilestones}
-        />
-      </main>
+      <Dialog open={freeTimeOpen} onOpenChange={setFreeTimeOpen}>
+        <DialogContent className="border-slate-800 bg-[#0b0f17] text-white sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>What&apos;s actually left for you</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Sleep, work and obligations eat most of a day. Adjust the sliders to see your truly free time.
+            </DialogDescription>
+          </DialogHeader>
+          <FreeTimeBreakdown data={data} activity={activity} onChange={setActivity} />
+        </DialogContent>
+      </Dialog>
     </Shell>
   )
 }

@@ -24,8 +24,9 @@ function diff(end: Date): Parts {
 }
 
 /**
- * Live-ticking countdown to the estimated end of life. Isolated into its own
- * component so the per-second re-render never touches the grids.
+ * Live-ticking countdown to the estimated end of life. Big day count with a
+ * ticking hh:mm:ss beneath. Isolated so the per-second re-render never touches
+ * the grids.
  */
 export function LiveCountdown({ endDate }: LiveCountdownProps) {
   const [parts, setParts] = useState<Parts>(() => diff(endDate))
@@ -35,32 +36,17 @@ export function LiveCountdown({ endDate }: LiveCountdownProps) {
     return () => clearInterval(id)
   }, [endDate])
 
-  const cells: { value: number; label: string }[] = [
-    { value: parts.days, label: "days" },
-    { value: parts.hours, label: "hours" },
-    { value: parts.minutes, label: "min" },
-    { value: parts.seconds, label: "sec" },
-  ]
+  const pad = (n: number) => String(n).padStart(2, "0")
 
   return (
-    <div className="flex items-end gap-3 sm:gap-4">
-      {cells.map((c, i) => (
-        <div key={c.label} className="flex items-end gap-3 sm:gap-4">
-          <div className="text-center">
-            <div
-              className={`tabular-nums font-extrabold leading-none tracking-tight ${
-                i === 0
-                  ? "text-5xl text-amber-300 sm:text-6xl"
-                  : "text-2xl text-white sm:text-3xl"
-              }`}
-            >
-              {i === 0 ? c.value.toLocaleString() : String(c.value).padStart(2, "0")}
-            </div>
-            <div className="mt-1 text-[10px] uppercase tracking-widest text-slate-500">{c.label}</div>
-          </div>
-          {i < cells.length - 1 && <span className="pb-5 text-2xl text-slate-700">:</span>}
-        </div>
-      ))}
+    <div className="text-center">
+      <div className="text-5xl font-extrabold leading-none tracking-tight text-amber-300 tabular-nums">
+        {parts.days.toLocaleString()}
+      </div>
+      <div className="mt-1 text-[11px] uppercase tracking-widest text-slate-500">days left</div>
+      <div className="mt-2 font-mono text-sm tabular-nums text-slate-400">
+        {pad(parts.hours)}:{pad(parts.minutes)}:{pad(parts.seconds)}
+      </div>
     </div>
   )
 }
